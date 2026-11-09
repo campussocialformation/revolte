@@ -3,8 +3,8 @@
 Revolte est une groovebox logicielle autonome pour Windows, pensée comme une machine et pas comme un DAW.
 Elle compte **8 pistes : 2 synthés, 2 basses, 3 rythmes et 1 sampler**. Le séquenceur s'inspire du firmware
 [Skiff](https://github.com/illuminus5/skiff) (M-VAVE FM-1) : probabilités, conditions de déclenchement, ratchets,
-p-locks, listes de patterns, scènes, couche de performance… Tout se pilote depuis une **Akai MIDImix** et un
-**Novation Launchkey Mini**.
+p-locks, listes de patterns, scènes, couche de performance… Tout se pilote depuis une **Akai MIDImix**, un
+**Novation Launchpad Mini** ou un **Launchkey Mini**.
 
 > Revolte reprend les *fonctionnalités* de Skiff mais pas son code : tout est écrit de zéro (moteur audio en
 > JavaScript dans un AudioWorklet, interface Electron).
@@ -240,6 +240,18 @@ Windows) est reconnu automatiquement.
 | **STEPS** | pas 1–8 de la page jouée | pas 9–16 (piste sélectionnée, lane sélectionnée pour la batterie) |
 
 En mode Drum du Launchkey (canal 10), les pads jouent les 8 lanes de la piste rythmique sélectionnée.
+
+### Novation Launchpad Mini (MK3 ; Launchpad X et anciens Mini MK1/MK2 aussi)
+
+Revolte passe le Launchpad en mode « Programmer » au branchement et le rend à la normale en quittant. Les 4 boutons
+de mode en haut à droite (Session, Drums, Keys, User sur le MK3) choisissent ce que fait la grille :
+
+| Mode | Grille 8×8 | ▲▼ | ◀▶ | Colonne de droite |
+|---|---|---|---|---|
+| **SESSION** | colonnes = pistes 1–8, lignes = patterns A–H, lancement quantisé (couleur de piste, pulsé = en cours, clignotant = en attente) | patterns A–H / I–P | — | scènes 1–8 (9–16 avec ▼) |
+| **STEPS** | séquenceur de la piste sélectionnée : batterie = 8 lanes × 8 pas, mélodique = 64 pas (note = dernière note jouée) | piste précédente / suivante | page de pas | sélection de piste |
+| **KEYS** | jouer la piste sélectionnée : grille dans la gamme du titre (une rangée = une quarte) ; batterie = 8 lanes en bas | octave | — | sélection de piste |
+| **MIXER** | rangée du haut : mute · puis solo · sélection · armement · throws CUTOFF, REVERB, DELAY, DIST + FILL + lecture · 2 rangées du bas : les 14 FX de performance (maintenus) | — | — | sélection de piste |
 
 ### Clavier de l'ordinateur
 - **Espace** : lecture/stop. **Ctrl+R** : enregistrement. **Tab** maintenu : FILL. **F1 à F5** : pages.

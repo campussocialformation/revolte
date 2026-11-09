@@ -490,7 +490,7 @@ export class Store {
 const SETTINGS_KEY = 'revolte.settings.v1';
 export const DEFAULT_SETTINGS = {
   latency: 'interactive', recQuantize: true, countIn: true, click: true, clickAlways: false, armFollows: true,
-  muteQuant: 'NOW', midiLearn: [], lkDawMode: true, lkPadMode: 'MUTES', pickup: false,
+  muteQuant: 'NOW', midiLearn: [], lkDawMode: true, lkPadMode: 'MUTES', lpMode: 'SESSION', pickup: false,
   portRoles: {}, keyboardLayout: 'auto', autosave: true, lastPath: null, stepPreview: true,
   audioBackend: 'webaudio', audioDeviceId: null, audioDeviceName: null, audioSampleRate: 48000, audioBufferSize: 128, audioFirstChannel: 0, audioQueue: 2,
 };

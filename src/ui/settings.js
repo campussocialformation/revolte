@@ -1,6 +1,6 @@
 // Revolte — MIDI & settings page
 import { h, clear, button, selectField, setLearnHandler } from './widgets.js';
-import { ROLES, PAD_MODES, MIDIMIX } from '../midi/midi.js';
+import { ROLES, PAD_MODES, MIDIMIX, LP_MODES } from '../midi/midi.js';
 import { saveSettings } from './store.js';
 import { NATIVE_AUDIO } from './bridge.js';
 
@@ -55,6 +55,17 @@ export class SettingsPage {
         row('Pads FX', '14 effets de performance (maintenir), FILL, THROW DELAY'),
         row('Pads STEPS', 'séquenceur pas-à-pas : 16 pas de la page jouée (lane sélectionnée)'),
         row('Pads mode Drum (ch.10)', 'jouent les 8 lanes de la piste rythmique')));
+    const lp = h('div', { class: 'panel' },
+      h('div', { class: 'panel-title' }, 'NOVATION LAUNCHPAD MINI (MK3, X, et Mini MK1/MK2)'),
+      selectField('MODE', LP_MODES, this.midi.lp.mode, (v) => { this.midi.lp.mode = v; st.lpMode = v; this.save(); this.midi.refreshLeds(true); }),
+      h('table', { class: 'map' },
+        row('Boutons du haut 5 à 8', 'modes SESSION · STEPS · KEYS · MIXER (sur MK3 : Session, Drums, Keys, User)'),
+        row('SESSION', 'colonnes = pistes 1–8, lignes = patterns A–H (▲▼ : I–P) ; clic = lancement quantisé. Colonne de droite = scènes 1–8 (▼ : 9–16)'),
+        row('STEPS', 'séquenceur de la piste sélectionnée : batterie = 8 lanes × 8 pas, mélodique = 64 pas (note = dernière note jouée). ◀▶ = page, ▲▼ = piste'),
+        row('KEYS', 'jouer la piste sélectionnée : grille dans la gamme du titre (une rangée = une quarte, ▲▼ = octave) ; batterie = 8 lanes en bas'),
+        row('MIXER', 'rangée 1 : mute · 2 : solo · 3 : sélection · 4 : armement · 5 : throws CUTOFF/REVERB/DELAY/DIST, FILL, lecture · 7–8 : les 14 FX de performance (maintenus)'),
+        row('Colonne de droite', 'hors SESSION : sélection de la piste 1–8')),
+      h('div', { class: 'hint' }, 'Le Launchpad passe en mode « Programmer » au branchement et revient à la normale quand on quitte Revolte.'));
     const mm = h('div', { class: 'panel' },
       h('div', { class: 'panel-title' }, 'AKAI MIDIMIX (preset usine)'),
       chk('pickup', 'Prise de valeur (soft takeover) : un potard n\'agit qu\'après avoir croisé la valeur actuelle'),
@@ -76,7 +87,7 @@ export class SettingsPage {
         row('Ctrl+Z / Ctrl+Y', 'annuler / rétablir'), row('Ctrl+S / Ctrl+O / Ctrl+N', 'sauver / ouvrir / nouveau projet'),
         row('Ctrl+C / Ctrl+V / Suppr', 'copier / coller / supprimer les pas sélectionnés'), row('Ctrl+A', 'sélectionner tous les pas'), row('Tab (maintenu)', 'FILL'), row('← →', 'REC armé et à l\'arrêt : déplace le curseur pas-à-pas (silence)')));
     this.mon = h('pre', { class: 'monitor' });
-    el.append(h('div', { class: 'settings-cols' }, h('div', { class: 'col' }, this.audio, this.ports, mm, lk), h('div', { class: 'col' }, learn, prefs, kb, h('div', { class: 'panel' }, h('div', { class: 'panel-title' }, 'MONITEUR MIDI'), this.mon))));
+    el.append(h('div', { class: 'settings-cols' }, h('div', { class: 'col' }, this.audio, this.ports, mm, lp, lk), h('div', { class: 'col' }, learn, prefs, kb, h('div', { class: 'panel' }, h('div', { class: 'panel-title' }, 'MONITEUR MIDI'), this.mon))));
     this.renderPorts();
     this.renderAudio();
   }

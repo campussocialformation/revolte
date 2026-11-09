@@ -2,12 +2,15 @@
 import { toNorm, fromNorm, PATTERN_NAMES } from '../shared/params.js';
 import { perfKnobIds, stripTarget } from '../ui/live.js';
 import { newStep } from '../shared/model.js';
+import { LaunchpadDriver, lpKind, LP_MODES } from './launchpad.js';
+export { LP_MODES };
 
-export const ROLES = { midimix: 'Akai MIDImix', 'lk-keys': 'Launchkey — clavier/potards', 'lk-daw': 'Launchkey — DAW (pads, transport)', keys: 'Clavier MIDI (joue la piste sélectionnée)', ignore: 'Ignorer' };
+export const ROLES = { midimix: 'Akai MIDImix', launchpad: 'Novation Launchpad (Mini MK3 / X / Mini)', 'lk-keys': 'Launchkey — clavier/potards', 'lk-daw': 'Launchkey — DAW (pads, transport)', keys: 'Clavier MIDI (joue la piste sélectionnée)', ignore: 'Ignorer' };
 
 export function guessRole(name) {
   const n = (name || '').toLowerCase();
   if (/midi\s*mix/.test(n)) return 'midimix';
+  if (lpKind(name)) return /daw|midiin2|midiout2/.test(n) ? 'ignore' : 'launchpad';
   if (/launchkey|lkmk|lk mini/.test(n)) {
     if (/daw|midiin2|midiout2|\(2\)|\s2$|port 2/.test(n)) return 'lk-daw';
     return 'lk-keys';
@@ -52,6 +55,7 @@ export class MidiManager {
     this.ledCache = new Map();
     this.status = 'non initialisé';
     this.listeners = new Set();
+    this.lp = new LaunchpadDriver(this);
     store.on('pos', () => this.refreshLeds());
     store.on('mix', () => this.refreshLeds(true));
     store.on('track', () => this.refreshLeds(true));
@@ -69,7 +73,9 @@ export class MidiManager {
   async init() {
     if (!navigator.requestMIDIAccess) { this.status = 'WebMIDI indisponible'; this.changed(); return; }
     try {
-      this.access = await navigator.requestMIDIAccess({ sysex: false });
+      // SysEx is needed to put the Launchpad in Programmer mode
+      try { this.access = await navigator.requestMIDIAccess({ sysex: true }); }
+      catch { this.access = await navigator.requestMIDIAccess({ sysex: false }); }
       this.access.onstatechange = () => this.scan();
       this.status = 'OK';
       this.scan();
@@ -95,6 +101,10 @@ export class MidiManager {
       if (out.state === 'disconnected') continue;
       this.outputs.push({ port: out, role: this.roleOf(out) });
       this.openPort(out);
+    }
+    // Launchpad: Programmer mode on every newly seen output
+    for (const o of this.outputs) {
+      if (o.role === 'launchpad' && !prevOut.has(o.port.id)) { const k = lpKind(o.port.name) || { dev: 0x0d, legacy: false }; this.lp.hello(o.port, k); }
     }
     // Launchkey: DAW mode on every newly seen DAW output
     for (const o of this.outputs) {
@@ -122,6 +132,7 @@ export class MidiManager {
     const parts = [];
     if (roles.has('midimix')) parts.push('MIDImix');
     if (roles.has('lk-keys') || roles.has('lk-daw')) parts.push('Launchkey');
+    if (roles.has('launchpad')) parts.push('Launchpad');
     const others = this.inputs.filter((i) => i.role === 'keys').length;
     if (others) parts.push(`+${others}`);
     const errs = Object.keys(this.portErrors || {}).length;
@@ -136,6 +147,7 @@ export class MidiManager {
     if (on) setTimeout(() => this.refreshLeds(true), 150);
   }
   shutdown() {
+    for (const p of this.out('launchpad')) this.lp.goodbye(p, lpKind(p.name) || { dev: 0x0d, legacy: false });
     if (this.store.settings.lkDawMode) this.lkDawMode(false);
     for (let i = 0; i < 27; i++) this.sendTo('midimix', [0x90, i, 0]);
   }
@@ -164,6 +176,7 @@ export class MidiManager {
     }
     if (role === 'ignore') return;
     if (role === 'midimix') return this.midimix(type, ch, d1, d2);
+    if (role === 'launchpad') { const k = lpKind(port.name) || { legacy: false }; return this.lp.handle(this.lp.decode(type, ch, d1, d2, k.legacy)); }
     if (role === 'lk-daw') return this.launchkey(type, ch, d1, d2, true);
     if (role === 'lk-keys') return this.launchkey(type, ch, d1, d2, false);
     return this.keyboard(type, ch, d1, d2);
@@ -345,6 +358,8 @@ export class MidiManager {
       });
     }
     // Launchkey pads
+    // Launchpad
+    for (const p of this.out('launchpad')) this.lp.paint(p, lpKind(p.name) || { dev: 0x0d, legacy: false });
     if (!this.out('lk-daw').length || !s.settings.lkDawMode) return;
     const mode = s.settings.lkPadMode;
     const pos = s.pos;
