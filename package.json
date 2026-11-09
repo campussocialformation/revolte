@@ -1,0 +1,55 @@
+{
+  "name": "revolte",
+  "productName": "Revolte",
+  "version": "1.0.0",
+  "description": "Revolte — groovebox 8 pistes pour Windows (2 synthés, 2 basses, 3 rythmes, 1 sampler), pilotable avec Akai MIDImix et Novation Launchkey Mini",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "author": "Revolte",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "test": "node tests/engine.test.mjs && node tests/model.test.mjs",
+    "dist": "electron-builder --win nsis portable --x64",
+    "dist:dir": "electron-builder --win dir --x64"
+  },
+  "devDependencies": {
+    "electron": "38.8.6",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "org.revolte.groovebox",
+    "productName": "Revolte",
+    "files": [
+      "electron/**",
+      "src/**",
+      "build/icon.png",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "fileAssociations": [
+      {
+        "ext": "rvlt",
+        "name": "Projet Revolte",
+        "description": "Projet Revolte"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Revolte-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Revolte-Portable-${version}.${ext}"
+    }
+  }
+}
