@@ -169,7 +169,7 @@ body.learning .knob, body.learning .fader { outline: 1px dashed var(--warn); cur
 .sample-name { color: var(--acc2); font-family: var(--mono); font-size: 12px; }
 
 /* ---------------------------------------------------------------- LIVE */
-.live { display: grid; grid-template-columns: minmax(0, 1fr) 230px; grid-template-rows: minmax(0, 1fr) auto auto; }
+.live { display: grid; grid-template-columns: minmax(0, 1fr) 230px; grid-template-rows: max-content max-content max-content; align-content: start; overflow-y: auto; }
 .strips { grid-column: 1; grid-row: 1; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; min-height: 0; }
 .strip { background: var(--bg1); border: 1px solid var(--line1); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 6px; min-height: 0; border-top: 3px solid var(--tc); }
 .strip.selected { box-shadow: 0 0 0 1px var(--tc); background: var(--bg2); }
@@ -186,7 +186,7 @@ body.learning .knob, body.learning .fader { outline: 1px dashed var(--warn); cur
 .pad.pend { animation: blink .4s infinite; background: #fff; color: #000; }
 .strip-knobs { display: flex; justify-content: space-around; }
 .strip-knobs .knob { width: 50px; }
-.strip-low { display: flex; gap: 6px; flex: 1; min-height: 110px; }
+.strip-low { display: flex; gap: 6px; flex: none; height: clamp(120px, calc(100vh - 700px), 320px); }
 .strip-low .fader { flex: 0 0 auto; height: 100%; }
 .strip-low .fader .f-body { flex: 1; }
 .strip-btns { display: flex; flex-direction: column; gap: 4px; flex: 1; }
@@ -197,7 +197,7 @@ body.learning .knob, body.learning .fader { outline: 1px dashed var(--warn); cur
 .solo-btn.on { background: var(--blue) !important; color: #000 !important; border-color: var(--blue) !important; }
 .sel-btn.on { background: var(--tc) !important; color: #000 !important; border-color: var(--tc) !important; }
 .strip-btns .row .btn { flex: 1; padding: 4px 0; }
-.scenes { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; gap: 6px; overflow: auto; }
+.scenes { grid-column: 2; grid-row: 1; align-self: stretch; display: flex; flex-direction: column; gap: 6px; overflow: auto; }
 .scene-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
 .scene { display: flex; gap: 5px; align-items: center; padding: 6px; border-radius: 5px; border: 1px solid var(--line1); background: var(--bg0); color: var(--fg3); cursor: pointer; text-align: left; font-size: 11px; overflow: hidden; }
 .scene b { color: var(--fg2); }
@@ -305,3 +305,19 @@ body.dropping::after { content: "Déposez un fichier audio (piste sélectionnée
 
 .hint.warn { color: var(--warn); }
 .audio-panel .selfield { justify-content: space-between; }
+
+/* LIVE strips: never shrink their content (controls must stay clickable at any window size) */
+.strip > * { flex-shrink: 0; }
+.strip { min-height: max-content; }
+.strip-low .fader { display: flex; flex-direction: column; }
+.strip-low .fader .f-body { flex: 1; min-height: 0; }
+.strip-low .fader .f-slot { min-height: 0; }
+.strip-btns > * { flex-shrink: 0; }
+.strip-btns .big-btn { flex: 1 1 auto; min-height: 36px; }
+.live > .strips, .live > .perf-knobs, .live > .fx-pads, .live > .live-master { min-height: max-content; }
+.midi-ind { background: var(--bg0); border: 1px solid var(--line2); border-radius: 12px; padding: 3px 10px; font-size: 11px; font-weight: 700; color: var(--fg2); cursor: pointer; white-space: nowrap; }
+.midi-ind.ok { color: var(--ok); border-color: #1f5c45; }
+.midi-ind.bad { color: var(--warn); }
+.midi-ind.act { background: var(--ok); color: #000; }
+.port-state { color: var(--fg3); font-size: 11px; }
+.port-state.err { color: var(--rec); font-weight: 700; }

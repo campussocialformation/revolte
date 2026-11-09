@@ -42,13 +42,18 @@ const tabs = h('nav', { class: 'pages' }, ...PAGES.map(([id, label, key]) => h('
 const fileMenu = h('div', { class: 'filemenu' },
   button('Nouveau', () => newProjectDialog(), 'small'), button('Ouvrir', () => openProject(), 'small'), button('Sauver', () => saveProject(false), 'small'), button('Sauver sous', () => saveProject(true), 'small'),
   button('↶', () => store.undo(), 'small', 'Annuler (Ctrl+Z)'), button('↷', () => store.redo(), 'small', 'Rétablir (Ctrl+Y)'));
+const midiEl = h('button', { class: 'midi-ind', onclick: () => showPage('midi') }, 'MIDI…');
 const top = h('header', { class: 'topbar' },
   h('div', { class: 'logo' }, 'REVOLTE'), titleEl, fileMenu,
   h('div', { class: 'transport-box' }, playBtn, stopBtn, recBtn, h('label', { class: 'bpm-box' }, bpmInput, h('span', {}, 'BPM')), button('TAP', () => store.tapTempo(), 'small'), songModeSel,
     momentary('FILL', () => store.setFill(true), () => store.setFill(false), 'small fill'), posEl),
   h('div', { class: 'song-box' }, button('◀', () => store.selectSong(store.songIdx - 1, store.playing), 'tiny'), songSel, button('▶', () => store.selectSong(store.songIdx + 1, store.playing), 'tiny')),
-  tabs, bounceBtn, meterEl, cpuEl);
+  tabs, midiEl, bounceBtn, meterEl, cpuEl);
 const main = h('main', { class: 'main' });
+const renderMidiInd = () => { const sm = midi.summary(); midiEl.textContent = sm.text; midiEl.title = sm.title; midiEl.classList.toggle('ok', sm.ok); midiEl.classList.toggle('bad', !sm.ok); };
+midi.onChange(renderMidiInd);
+let actT = 0;
+midi.onActivity = () => { const now = performance.now(); if (now - actT > 60) { actT = now; midiEl.classList.add('act'); setTimeout(() => midiEl.classList.remove('act'), 90); } };
 const toasts = h('div', { class: 'toasts' });
 document.body.append(top, main, toasts);
 
@@ -250,6 +255,7 @@ async function start() {
   pages.song = new SongPage(store);
   pages.mix = new MixerPage(store);
   pages.midi = new SettingsPage(store, midi);
+  midi.init(); // MIDI never waits for the audio driver
   const r = await bridge.start(audioConfig());
   if (!r.ok) store.toast(`Sortie ${store.settings.audioBackend} indisponible (${r.error}) : retour sur Web Audio`, 'error');
   const last = store.settings.autosave ? await autosaveRead() : null;
@@ -263,7 +269,6 @@ async function start() {
   } else await store.loadProject(demoProject());
   renderTop();
   showPage('studio');
-  midi.init();
   if (bridge.backend === 'webaudio' && bridge.ctx.state !== 'running') {
     const ov = h('div', { class: 'start-overlay', onclick: async () => { await bridge.resume(); ov.remove(); } }, h('div', { class: 'logo big' }, 'REVOLTE'), h('div', {}, 'Cliquez pour démarrer le moteur audio'));
     document.body.append(ov);

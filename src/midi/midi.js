@@ -83,12 +83,19 @@ export class MidiManager {
     if (!this.access) return;
     const prevOut = new Set(this.outputs.map((o) => o.port.id));
     this.inputs = []; this.outputs = [];
+    this.portErrors = this.portErrors || {};
     for (const inp of this.access.inputs.values()) {
+      if (inp.state === 'disconnected') continue;
       const role = this.roleOf(inp);
       inp.onmidimessage = (ev) => this.onMessage(inp, role, ev.data);
       this.inputs.push({ port: inp, role });
+      this.openPort(inp);
     }
-    for (const out of this.access.outputs.values()) this.outputs.push({ port: out, role: this.roleOf(out) });
+    for (const out of this.access.outputs.values()) {
+      if (out.state === 'disconnected') continue;
+      this.outputs.push({ port: out, role: this.roleOf(out) });
+      this.openPort(out);
+    }
     // Launchkey: DAW mode on every newly seen DAW output
     for (const o of this.outputs) {
       if (o.role === 'lk-daw' && !prevOut.has(o.port.id) && this.store.settings.lkDawMode) this.lkDawMode(true, o.port);
@@ -96,6 +103,29 @@ export class MidiManager {
     this.ledCache.clear();
     this.refreshLeds(true);
     this.changed();
+  }
+  // Windows: a MIDI port used by another application (Ableton, an editor…) cannot be opened
+  openPort(port) {
+    const key = (port.type === 'input' ? 'IN ' : 'OUT ') + port.name;
+    port.open().then(() => {
+      if (this.portErrors[key]) { delete this.portErrors[key]; this.changed(); }
+    }).catch((e) => {
+      this.portErrors[key] = e && e.message ? e.message : String(e);
+      this.store.toast(`MIDI : impossible d'ouvrir « ${port.name} » (déjà utilisé par une autre application ?)`, 'error');
+      this.changed();
+    });
+  }
+  // summary for the top bar
+  summary() {
+    if (!this.access) return { ok: false, text: this.status === 'non initialisé' ? 'MIDI…' : 'MIDI ✕', title: this.status };
+    const roles = new Set(this.inputs.map((i) => i.role));
+    const parts = [];
+    if (roles.has('midimix')) parts.push('MIDImix');
+    if (roles.has('lk-keys') || roles.has('lk-daw')) parts.push('Launchkey');
+    const others = this.inputs.filter((i) => i.role === 'keys').length;
+    if (others) parts.push(`+${others}`);
+    const errs = Object.keys(this.portErrors || {}).length;
+    return { ok: !errs && this.inputs.length > 0, text: 'MIDI ' + (parts.length ? parts.join(' · ') : 'aucun') + (errs ? ' ⚠' : ''), title: this.inputs.map((i) => `${i.port.name} → ${ROLES[i.role]}`).join('\n') + (errs ? '\n\nErreurs :\n' + Object.entries(this.portErrors).map(([k, v]) => k + ' : ' + v).join('\n') : '') || 'Aucune entrée MIDI' };
   }
   out(role) { return this.outputs.filter((o) => o.role === role).map((o) => o.port); }
   sendTo(role, bytes) { for (const p of this.out(role)) { try { p.send(bytes); } catch { /* port gone */ } } }
@@ -115,6 +145,7 @@ export class MidiManager {
     const st = data[0] & 0xf0, ch = data[0] & 0x0f, d1 = data[1], d2 = data[2];
     if (st === 0xf0 || data[0] >= 0xf8) return; // sysex / realtime
     const type = st === 0x90 && d2 > 0 ? 'on' : st === 0x80 || (st === 0x90 && d2 === 0) ? 'off' : st === 0xb0 ? 'cc' : st === 0xe0 ? 'pb' : st === 0xd0 ? 'at' : 'other';
+    if (this.onActivity) this.onActivity(role);
     this.monitor.unshift(`${port.name.slice(0, 22)} · ${type.toUpperCase()} ch${ch + 1} ${d1 ?? ''} ${d2 ?? ''}`);
     if (this.monitor.length > 30) this.monitor.length = 30;
     this.changed();

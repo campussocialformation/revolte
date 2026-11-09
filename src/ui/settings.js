@@ -133,7 +133,9 @@ export class SettingsPage {
     el.append(h('div', { class: 'panel-title' }, 'PORTS MIDI', h('span', { class: 'hint' }, m.status)));
     if (!m.inputs.length) el.append(h('div', { class: 'hint' }, 'Aucune entrée MIDI détectée. Branchez la MIDImix et le Launchkey : ils sont reconnus automatiquement.'));
     for (const { port, role } of [...m.inputs.map((x) => ({ ...x, dir: 'in' })), ...m.outputs.map((x) => ({ ...x, dir: 'out' }))]) {
-      el.append(h('div', { class: 'port-row' }, h('span', { class: 'port-dir' }, port.type === 'input' ? 'IN' : 'OUT'), h('span', { class: 'port-name' }, port.name),
+      const err = (m.portErrors || {})[(port.type === 'input' ? 'IN ' : 'OUT ') + port.name];
+      el.append(h('div', { class: 'port-row' }, h('span', { class: 'port-dir' }, port.type === 'input' ? 'IN' : 'OUT'), h('span', { class: 'port-name' }, port.name,
+        h('span', { class: err ? 'port-state err' : 'port-state' }, err ? ' — ERREUR : ' + err : port.connection === 'open' ? ' — ouvert' : ' — ' + port.connection)),
         selectField('', Object.entries(ROLES), role, (v) => { st.portRoles[port.name] = v; this.save(); m.scan(); })));
     }
     el.append(button('Rescanner', () => m.scan(), 'small'));
