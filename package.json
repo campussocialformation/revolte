@@ -9,7 +9,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "start": "electron .",
-    "test": "node tests/engine.test.mjs && node tests/model.test.mjs && node tests/audio-host.test.mjs",
+    "test": "node tests/engine.test.mjs && node tests/model.test.mjs && node tests/audio-host.test.mjs && node tests/midi.test.mjs",
     "dist": "electron-builder --win nsis portable --x64",
     "dist:dir": "electron-builder --win dir --x64"
   },

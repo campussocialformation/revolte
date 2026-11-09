@@ -29,7 +29,8 @@ function legacyColour(col) {
 
 export function lpKind(name) {
   const n = (name || '').toLowerCase();
-  if (/lpminimk3|launchpad mini mk3|mini mk3/.test(n)) return { dev: 0x0d, legacy: false };
+  if (/launchkey|lkmk/.test(n)) return null;
+  if (/lpminimk3|launchpad mini mk3/.test(n)) return { dev: 0x0d, legacy: false };
   if (/lpx|launchpad x/.test(n)) return { dev: 0x0c, legacy: false };
   if (/launchpad/.test(n)) return { dev: 0, legacy: true };
   return null;
