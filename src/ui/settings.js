@@ -2,6 +2,7 @@
 import { h, clear, button, selectField, setLearnHandler } from './widgets.js';
 import { ROLES, PAD_MODES, MIDIMIX } from '../midi/midi.js';
 import { saveSettings } from './store.js';
+import { NATIVE_AUDIO } from './bridge.js';
 
 export class SettingsPage {
   constructor(store, midi) {
@@ -9,6 +10,7 @@ export class SettingsPage {
     this.el = h('div', { class: 'page settings' });
     midi.onChange(() => { if (this.el.isConnected) this.renderPorts(); });
     store.on('learnDone', () => { setLearnHandler(null); this.render(); });
+    store.on('audio', () => { if (this.audio) this.renderAudio(); });
     this.render();
   }
   save() { saveSettings(this.store.settings); }
@@ -26,8 +28,8 @@ export class SettingsPage {
       chk('armFollows', 'L\'armement suit la piste sélectionnée'),
       chk('stepPreview', 'Entendre les notes posées dans la grille'),
       chk('autosave', 'Sauvegarde automatique de la session (restaurée au démarrage)'),
-      selectField('LATENCE AUDIO (redémarrage)', [['interactive', 'Faible (interactive)'], ['balanced', 'Équilibrée'], ['playback', 'Sûre (lecture)']], st.latency, (v) => { st.latency = v; this.save(); s.toast('Pris en compte au prochain démarrage'); }),
-      h('div', { class: 'hint' }, `Latence de sortie actuelle : ~${s.bridge.latencyMs} ms · fréquence 48 kHz`));
+    );
+    this.audio = h('div', { class: 'panel audio-panel' });
     const learn = h('div', { class: 'panel' },
       h('div', { class: 'panel-title' }, 'MIDI LEARN'),
       h('div', { class: 'hint' }, 'Cliquez « Apprendre », cliquez un potard/fader à l\'écran (n\'importe quelle page), puis tournez un contrôle MIDI. Les assignations apprises passent avant les mappings par défaut.'),
@@ -74,8 +76,56 @@ export class SettingsPage {
         row('Ctrl+Z / Ctrl+Y', 'annuler / rétablir'), row('Ctrl+S / Ctrl+O / Ctrl+N', 'sauver / ouvrir / nouveau projet'),
         row('Ctrl+C / Ctrl+V / Suppr', 'copier / coller / supprimer les pas sélectionnés'), row('Ctrl+A', 'sélectionner tous les pas'), row('Tab (maintenu)', 'FILL'), row('← →', 'REC armé et à l\'arrêt : déplace le curseur pas-à-pas (silence)')));
     this.mon = h('pre', { class: 'monitor' });
-    el.append(h('div', { class: 'settings-cols' }, h('div', { class: 'col' }, this.ports, mm, lk), h('div', { class: 'col' }, learn, prefs, kb, h('div', { class: 'panel' }, h('div', { class: 'panel-title' }, 'MONITEUR MIDI'), this.mon))));
+    el.append(h('div', { class: 'settings-cols' }, h('div', { class: 'col' }, this.audio, this.ports, mm, lk), h('div', { class: 'col' }, learn, prefs, kb, h('div', { class: 'panel' }, h('div', { class: 'panel-title' }, 'MONITEUR MIDI'), this.mon))));
     this.renderPorts();
+    this.renderAudio();
+  }
+  async renderAudio(refreshDevices = false) {
+    const s = this.store, st = s.settings, b = s.bridge;
+    const el = clear(this.audio);
+    el.append(h('div', { class: 'panel-title' }, 'AUDIO · CARTE SON', h('span', { class: 'hint' }, b.info ? `${b.info.apiName}${b.info.device ? ' · ' + b.info.device : ''} · ${b.info.sr} Hz${b.info.frameSize ? ' · buffer ' + b.info.frameSize : ''} · latence ~${b.latencyMs} ms` : 'arrêté')));
+    const backends = [['webaudio', 'Web Audio (Windows standard, ~20-40 ms)']];
+    if (NATIVE_AUDIO) backends.push(['ASIO', 'ASIO (carte son pro, latence minimale)'], ['WASAPI', 'WASAPI (pilote Windows direct)'], ['DS', 'DirectSound']);
+    el.append(selectField('PILOTE', backends, st.audioBackend, (v) => { st.audioBackend = v; st.audioDeviceId = null; st.audioDeviceName = null; this.save(); this.renderAudio(true); }));
+    if (!NATIVE_AUDIO) el.append(h('div', { class: 'hint' }, 'ASIO / WASAPI direct : disponibles dans l\'application Windows (pas dans un navigateur).'));
+    if (st.audioBackend === 'webaudio') {
+      el.append(selectField('LATENCE', [['interactive', 'Faible (interactive)'], ['balanced', 'Équilibrée'], ['playback', 'Sûre (lecture)']], st.latency, (v) => { st.latency = v; this.save(); }));
+    } else {
+      const devBox = h('div', { class: 'col' }, h('div', { class: 'hint' }, 'Recherche des périphériques…'));
+      el.append(devBox);
+      const sel = (label, opts, val, key) => selectField(label, opts, val, (v) => { st[key] = isNaN(+v) ? v : +v; this.save(); });
+      el.append(
+        sel('FRÉQUENCE', [44100, 48000, 88200, 96000].map((x) => [x, x + ' Hz']), st.audioSampleRate, 'audioSampleRate'),
+        sel('BUFFER', [32, 64, 96, 128, 192, 256, 512, 1024].map((x) => [x, `${x} échantillons (${(x / (st.audioSampleRate || 48000) * 1000).toFixed(1)} ms)`]), st.audioBufferSize, 'audioBufferSize'),
+        sel('SÉCURITÉ', [[1, '1 buffer d\'avance (latence mini)'], [2, '2 buffers (recommandé)'], [3, '3 buffers'], [4, '4 buffers (machine chargée)']], st.audioQueue, 'audioQueue'),
+        h('div', { class: 'hint' }, st.audioBackend === 'ASIO'
+          ? 'En ASIO, la taille de buffer réelle est souvent imposée par le panneau de contrôle du pilote (Focusrite, RME, Steinberg, ASIO4ALL…). Si ça craque, montez le buffer ou la sécurité.'
+          : 'Si le son craque, augmentez le buffer ou la sécurité.'));
+      this.fillDevices(devBox, refreshDevices);
+    }
+    el.append(h('div', { class: 'row' }, button('Appliquer', async () => { await window.revolte.applyAudio(); this.renderAudio(); }, 'primary'),
+      st.audioBackend !== 'webaudio' ? button('Rafraîchir la liste', () => this.renderAudio(true), 'small') : null));
+  }
+  async fillDevices(box, force) {
+    const s = this.store, st = s.settings;
+    try {
+      if (force || !this._devs || this._devs.api !== st.audioBackend) this._devs = await s.bridge.nativeDevices(st.audioBackend);
+      const devs = this._devs.devices;
+      clear(box);
+      if (!devs.length) { box.append(h('div', { class: 'hint' }, `Aucun périphérique ${st.audioBackend}. Pour l'ASIO, installez le pilote de votre carte son (ou ASIO4ALL).`)); return; }
+      const cur = devs.find((d) => d.id === st.audioDeviceId) || devs.find((d) => d.name === st.audioDeviceName) || devs.find((d) => d.isDefault) || devs[0];
+      st.audioDeviceId = cur.id; st.audioDeviceName = cur.name;
+      box.append(selectField('PÉRIPHÉRIQUE', devs.map((d) => [d.id, `${d.name} (${d.outputChannels} sorties)`]), cur.id, (v) => {
+        const d = devs.find((x) => x.id === +v); st.audioDeviceId = d.id; st.audioDeviceName = d.name; st.audioFirstChannel = 0; this.save(); this.renderAudio();
+      }));
+      const pairs = [];
+      for (let c = 0; c + 1 < cur.outputChannels; c += 2) pairs.push([c, `Sorties ${c + 1}-${c + 2}`]);
+      if (pairs.length > 1) box.append(selectField('SORTIE', pairs, st.audioFirstChannel || 0, (v) => { st.audioFirstChannel = +v; this.save(); }));
+      if (cur.sampleRates && cur.sampleRates.length && !cur.sampleRates.includes(st.audioSampleRate)) box.append(h('div', { class: 'hint warn' }, `Fréquences acceptées : ${cur.sampleRates.join(', ')} Hz`));
+      this.save();
+    } catch (e) {
+      clear(box).append(h('div', { class: 'hint warn' }, 'Liste indisponible : ' + e.message));
+    }
   }
   renderPorts() {
     const m = this.midi, st = this.store.settings;

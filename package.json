@@ -9,7 +9,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "start": "electron .",
-    "test": "node tests/engine.test.mjs && node tests/model.test.mjs",
+    "test": "node tests/engine.test.mjs && node tests/model.test.mjs && node tests/audio-host.test.mjs",
     "dist": "electron-builder --win nsis portable --x64",
     "dist:dir": "electron-builder --win dir --x64"
   },
@@ -50,6 +50,13 @@
     },
     "portable": {
       "artifactName": "Revolte-Portable-${version}.${ext}"
-    }
+    },
+    "npmRebuild": false,
+    "asarUnpack": [
+      "node_modules/audify/**"
+    ]
+  },
+  "dependencies": {
+    "audify": "^1.10.1"
   }
 }

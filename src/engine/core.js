@@ -4,7 +4,7 @@ import { MelodicSynth } from './synth.js';
 import { DrumKit } from './drums.js';
 import { ChorusFx, DelayFx, ReverbFx, PerfFx, MasterChain } from './fx.js';
 import { OnePole, shape, clamp, rng, fsin } from './dsp.js';
-import { resBeats, CONDITIONS, ARP_RATES, NUM_TRACKS, MAX_STEPS, LAUNCH_QUANT } from '../shared/params.js';
+import { resBeats, CONDITIONS, ARP_RATES, NUM_TRACKS, MAX_STEPS, LAUNCH_QUANT, FX_PARAMS, defaultParams } from '../shared/params.js';
 
 const BLOCK = 128;
 const ARP_BEATS = { '1/4': 1, '1/8': 0.5, '1/8T': 1 / 3, '1/16': 0.25, '1/16T': 1 / 6, '1/32': 0.125 };
@@ -97,7 +97,8 @@ export class Engine {
     for (let i = 0; i < NUM_TRACKS; i++) this.tracks.push(new Track(this, i));
     this.bpm = 120; this.beat = 0; this.playing = false;
     this.songMode = 0; this.fill = false;
-    this.fx = {};
+    this.fx = defaultParams(FX_PARAMS);
+    this.loaded = false;
     this.chorus = new ChorusFx(sr); this.delay = new DelayFx(sr); this.reverb = new ReverbFx(sr);
     this.perf = new PerfFx(sr); this.master = new MasterChain(sr);
     this.bus = { L: new Float32Array(BLOCK), R: new Float32Array(BLOCK) };
@@ -172,7 +173,8 @@ export class Engine {
   loadSong(song) {
     this.bpm = song.bpm || 120;
     this.songMode = song.songMode || 0;
-    this.fx = { ...song.fx };
+    this.fx = { ...defaultParams(FX_PARAMS), ...song.fx };
+    this.loaded = true;
     song.tracks.forEach((ts, i) => {
       const t = this.tracks[i];
       t.setSound(ts.kind, ts.sound);
@@ -623,6 +625,7 @@ export class Engine {
   // ------------------------------------------------------------------ audio
   process(outL, outR) {
     const n = BLOCK;
+    if (!this.loaded) { outL.fill(0); outR.fill(0); return; }
     const sr = this.sr;
     const spb = sr * 60 / this.bpm; // samples per beat
     const b0 = this.beat, b1 = b0 + n / spb;

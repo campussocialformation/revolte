@@ -148,6 +148,26 @@ favoris (★) et des sons utilisateur enregistrés dans le projet.
 - **Chaîne master** : filtre DJ, crush, saturation, **EQ 3 bandes**, **compresseur** (seuil, ratio, attaque, relâche,
   mix parallèle), largeur stéréo, volume, **limiteur**. VU-mètres et réduction de gain.
 
+### Audio : ASIO, WASAPI, DirectSound
+Dans **MIDI · RÉGLAGES → AUDIO · CARTE SON** :
+
+| Pilote | Latence typique | Usage |
+|---|---|---|
+| **ASIO** | 3 à 10 ms | cartes son pro (Focusrite, RME, Steinberg, MOTU, Behringer…), ou ASIO4ALL. **Recommandé pour le live.** |
+| WASAPI | 10 à 20 ms | carte son intégrée sans pilote ASIO |
+| DirectSound | 30 ms et plus | dépannage |
+| Web Audio | 20 à 40 ms | mode par défaut, fonctionne partout |
+
+Choisissez le pilote, le périphérique, la paire de sorties (1-2, 3-4…), la fréquence, la taille de buffer et la
+« sécurité » (nombre de buffers d'avance), puis cliquez **Appliquer**. Le réglage est mémorisé.
+
+En ASIO, le moteur tourne dans un processus audio dédié, à priorité haute, qui écrit directement dans le pilote
+de la carte. Sa latence se calcule ainsi : (sécurité + 1) × buffer. Avec 64 échantillons à 48 kHz et une sécurité
+de 2, on obtient environ 4 ms. Le panneau de contrôle du pilote ASIO peut imposer sa propre taille de buffer.
+
+Si le son craque, augmentez le buffer ou la sécurité. Si le pilote ne s'ouvre pas, Revolte repasse
+automatiquement sur Web Audio et l'indique.
+
 ### MIDI · RÉGLAGES (F5)
 - Ports MIDI détectés et leur rôle (modifiable si la détection automatique se trompe).
 - **MIDI Learn** : cliquez « Apprendre », puis un potard ou un fader à l'écran, puis tournez un contrôle MIDI. Ça
@@ -252,6 +272,7 @@ En mode Drum du Launchkey (canal 10), les pads jouent les 8 lanes de la piste ry
 ```
 electron/main.cjs      fenêtre, dialogues natifs, permissions WebMIDI, association .rvlt
 electron/preload.cjs   pont sécurisé UI <-> système de fichiers
+electron/audio-host*.mjs  processus audio natif : même moteur, sortie ASIO/WASAPI/DirectSound (RtAudio via audify)
 src/engine/            moteur audio temps réel (AudioWorklet, JS pur, testable sous Node)
   core.js              séquenceur (timing à l'échantillon), mixage, sends, enregistrement, arpégiateur
   synth.js             voix ANALOG / FM / PLUCK / SAMPLE, filtres SVF + ladder, matrice de mod

@@ -302,3 +302,6 @@ body.dropping::after { content: "Déposez un fichier audio (piste sélectionnée
   .knob { width: 56px; }
   .fx-grid { grid-template-columns: repeat(5, auto); }
 }
+
+.hint.warn { color: var(--warn); }
+.audio-panel .selfield { justify-content: space-between; }

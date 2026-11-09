@@ -9,4 +9,9 @@ contextBridge.exposeInMainWorld('revolteNative', {
   quit: () => ipcRenderer.send('quit'),
   onCloseRequest: (fn) => ipcRenderer.on('close-request', () => fn()),
   onOpenFile: (fn) => ipcRenderer.on('open-file', (e, path, json) => fn(path, json)),
+  // native audio: the MessagePort is forwarded to the page with window.postMessage
+  audioConnect: () => ipcRenderer.send('audio-connect'),
+  audioDisconnect: () => ipcRenderer.send('audio-disconnect'),
+  onAudioHostExit: (fn) => ipcRenderer.on('audio-host-exit', (e, code) => fn(code)),
 });
+ipcRenderer.on('audio-port', (e) => { window.postMessage({ type: 'revolte-audio-port' }, '*', e.ports); });

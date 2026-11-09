@@ -1,5 +1,5 @@
 // Revolte — Electron main process
-const { app, BrowserWindow, ipcMain, dialog, Menu, session, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, session, shell, utilityProcess, MessageChannelMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -99,4 +99,23 @@ ipcMain.handle('confirm', async (e, { message, buttons }) => {
   const r = await dialog.showMessageBox(win, { type: 'question', message, buttons, defaultId: 0, cancelId: buttons.length - 1 });
   return r.response;
 });
-ipcMain.on('quit', () => { allowClose = true; app.quit(); });
+ipcMain.on('quit', () => { allowClose = true; if (audioHost) audioHost.kill(); app.quit(); });
+
+// ------------------------------------------------------------------ native audio (ASIO / WASAPI / DirectSound)
+let audioHost = null;
+function ensureAudioHost() {
+  if (audioHost) return audioHost;
+  audioHost = utilityProcess.fork(path.join(__dirname, 'audio-host-main.mjs'), [], { serviceName: 'Revolte Audio' });
+  audioHost.on('exit', (code) => {
+    audioHost = null;
+    if (win && !win.isDestroyed()) win.webContents.send('audio-host-exit', code);
+  });
+  return audioHost;
+}
+ipcMain.on('audio-connect', (e) => {
+  const child = ensureAudioHost();
+  const { port1, port2 } = new MessageChannelMain();
+  child.postMessage({ type: 'port' }, [port1]);
+  e.sender.postMessage('audio-port', null, [port2]);
+});
+ipcMain.on('audio-disconnect', () => { if (audioHost) { audioHost.kill(); audioHost = null; } });

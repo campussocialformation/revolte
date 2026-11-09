@@ -117,10 +117,10 @@ function newProjectDialog() {
 let bouncing = false;
 async function toggleBounce() {
   if (!bouncing) {
-    await bridge.start(); bridge.startCapture(); bouncing = true; bounceBtn.classList.add('on'); bounceBtn.textContent = '⏹ WAV';
+    await bridge.startCapture(); bouncing = true; bounceBtn.classList.add('on'); bounceBtn.textContent = '⏹ WAV';
     store.toast('Enregistrement du master… recliquez pour arrêter');
   } else {
-    const bytes = bridge.stopCapture(); bouncing = false; bounceBtn.classList.remove('on'); bounceBtn.textContent = '⏺ WAV';
+    const bytes = await bridge.stopCapture().catch((e) => { store.toast('Export WAV impossible : ' + e.message, 'error'); return null; }); bouncing = false; bounceBtn.classList.remove('on'); bounceBtn.textContent = '⏺ WAV';
     if (bytes) { const p = await saveBinary(bytes, `${store.song.name}.wav`, [{ name: 'WAV', extensions: ['wav'] }]); if (p) store.toast('WAV enregistré : ' + p); }
   }
 }
@@ -219,6 +219,30 @@ if (isElectron) {
   window.addEventListener('beforeunload', (e) => { autosave(); midi.shutdown(); if (store.dirty) { e.preventDefault(); e.returnValue = ''; } });
 }
 
+// ------------------------------------------------------------------ audio back-end (Web Audio or native ASIO / WASAPI / DirectSound)
+function audioConfig() {
+  const st = store.settings;
+  return { backend: st.audioBackend, latency: st.latency, deviceId: st.audioDeviceId, deviceName: st.audioDeviceName, sampleRate: st.audioSampleRate, bufferSize: st.audioBufferSize, firstChannel: st.audioFirstChannel, queue: st.audioQueue };
+}
+async function applyAudio() {
+  store.stop();
+  const r = await bridge.restart(audioConfig());
+  store.resyncEngine();
+  if (r.ok) store.toast(`Audio : ${bridge.info.apiName}${bridge.info.device ? ' · ' + bridge.info.device : ''} · ${bridge.info.sr} Hz${bridge.info.frameSize ? ' · ' + bridge.info.frameSize + ' éch.' : ''} · ~${bridge.latencyMs} ms`);
+  else store.toast(`Impossible d'ouvrir ${store.settings.audioBackend} : ${r.error}. Retour sur Web Audio.`, 'error');
+  store.emit('audio');
+  return r;
+}
+window.revolte.applyAudio = applyAudio;
+bridge.on('__audio', async (m) => {
+  if (m.ev === 'streamError') store.toast('Audio : ' + m.message, 'error');
+  if (m.ev === 'hostExit') {
+    store.toast('Le processus audio natif s\'est arrêté : retour sur Web Audio', 'error');
+    await bridge.start({ backend: 'webaudio', latency: store.settings.latency });
+    store.resyncEngine(); store.emit('audio');
+  }
+});
+
 // ------------------------------------------------------------------ start
 async function start() {
   pages.studio = new StudioPage(store);
@@ -226,7 +250,8 @@ async function start() {
   pages.song = new SongPage(store);
   pages.mix = new MixerPage(store);
   pages.midi = new SettingsPage(store, midi);
-  await bridge.start(store.settings.latency);
+  const r = await bridge.start(audioConfig());
+  if (!r.ok) store.toast(`Sortie ${store.settings.audioBackend} indisponible (${r.error}) : retour sur Web Audio`, 'error');
   const last = store.settings.autosave ? await autosaveRead() : null;
   if (last && last.project) {
     try {
@@ -239,7 +264,7 @@ async function start() {
   renderTop();
   showPage('studio');
   midi.init();
-  if (bridge.ctx.state !== 'running') {
+  if (bridge.backend === 'webaudio' && bridge.ctx.state !== 'running') {
     const ov = h('div', { class: 'start-overlay', onclick: async () => { await bridge.resume(); ov.remove(); } }, h('div', { class: 'logo big' }, 'REVOLTE'), h('div', {}, 'Cliquez pour démarrer le moteur audio'));
     document.body.append(ov);
   }

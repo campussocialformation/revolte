@@ -97,6 +97,13 @@ export class Store {
     this.send({ type: 'arm', t: this.armed });
   }
 
+  // after an audio back-end change: the new engine starts empty
+  resyncEngine() {
+    this.playing = false;
+    this.sendSong();
+    this.bridge.resendSamples();
+    this.emit('transport');
+  }
   // samples: decode every sample referenced by the project
   async loadProjectSamples() {
     for (const [id, s] of Object.entries(this.project.samples)) {
@@ -485,6 +492,7 @@ export const DEFAULT_SETTINGS = {
   latency: 'interactive', recQuantize: true, countIn: true, click: true, clickAlways: false, armFollows: true,
   muteQuant: 'NOW', midiLearn: [], lkDawMode: true, lkPadMode: 'MUTES', pickup: false,
   portRoles: {}, keyboardLayout: 'auto', autosave: true, lastPath: null, stepPreview: true,
+  audioBackend: 'webaudio', audioDeviceId: null, audioDeviceName: null, audioSampleRate: 48000, audioBufferSize: 128, audioFirstChannel: 0, audioQueue: 2,
 };
 export function loadSettings() {
   try { return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; } catch { return { ...DEFAULT_SETTINGS }; }
