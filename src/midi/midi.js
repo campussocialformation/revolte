@@ -5,12 +5,13 @@ import { newStep } from '../shared/model.js';
 import { LaunchpadDriver, lpKind, LP_MODES } from './launchpad.js';
 export { LP_MODES };
 
-export const ROLES = { midimix: 'Akai MIDImix', launchpad: 'Novation Launchpad (Mini MK3 / X / Mini)', 'lk-keys': 'Launchkey — clavier/potards', 'lk-daw': 'Launchkey — DAW (pads, transport)', keys: 'Clavier MIDI (joue la piste sélectionnée)', ignore: 'Ignorer' };
+export const ROLES = { midimix: 'Akai MIDImix', launchpad: 'Novation Launchpad (Mini MK3 / X / Pro MK3)', 'launchpad-old': 'Novation Launchpad Mini ancien (MK1/MK2)', 'lk-keys': 'Launchkey — clavier/potards', 'lk-daw': 'Launchkey — DAW (pads, transport)', keys: 'Clavier MIDI (joue la piste sélectionnée)', ignore: 'Ignorer' };
 
 export function guessRole(name) {
   const n = (name || '').toLowerCase();
   if (/midi\s*mix/.test(n)) return 'midimix';
-  if (lpKind(name)) return /daw|midiin2|midiout2/.test(n) ? 'ignore' : 'launchpad';
+  // both USB interfaces of a Launchpad are used: which one carries the pads depends on the model
+  if (lpKind(name)) return 'launchpad';
   if (/launchkey|lkmk|lk mini/.test(n)) {
     if (/daw|midiin2|midiout2|\(2\)|\s2$|port 2/.test(n)) return 'lk-daw';
     return 'lk-keys';
@@ -56,6 +57,7 @@ export class MidiManager {
     this.status = 'non initialisé';
     this.listeners = new Set();
     this.lp = new LaunchpadDriver(this);
+    this.detected = {}; this.lpKinds = {}; this.probed = new Set();
     store.on('pos', () => this.refreshLeds());
     store.on('mix', () => this.refreshLeds(true));
     store.on('track', () => this.refreshLeds(true));
@@ -83,7 +85,7 @@ export class MidiManager {
   }
   roleOf(port) {
     const o = this.store.settings.portRoles[port.name];
-    return o || guessRole(port.name);
+    return o || (this.detected && this.detected[port.name]) || guessRole(port.name);
   }
   scan() {
     if (!this.access) return;
@@ -104,7 +106,7 @@ export class MidiManager {
     }
     // Launchpad: Programmer mode on every newly seen output
     for (const o of this.outputs) {
-      if (o.role === 'launchpad' && !prevOut.has(o.port.id)) { const k = lpKind(o.port.name) || { dev: 0x0d, legacy: false }; this.lp.hello(o.port, k); }
+      if ((o.role === 'launchpad' || o.role === 'launchpad-old') && !prevOut.has(o.port.id)) { const k = this.kindOf(o.port); this.lp.hello(o.port, k); }
     }
     // Launchkey: DAW mode on every newly seen DAW output
     for (const o of this.outputs) {
@@ -113,6 +115,55 @@ export class MidiManager {
     this.ledCache.clear();
     this.refreshLeds(true);
     this.changed();
+    this.probeIdentity();
+  }
+  diagnostic() {
+    const L = [`Revolte · ${navigator.userAgent}`, `MIDI : ${this.status} · sysex ${this.access && this.access.sysexEnabled ? 'oui' : 'non'}`, ''];
+    for (const x of this.inputs) L.push(`IN  « ${x.port.name} » rôle=${x.role} état=${x.port.state}/${x.port.connection} fabricant=${x.port.manufacturer || '?'}`);
+    for (const x of this.outputs) L.push(`OUT « ${x.port.name} » rôle=${x.role} état=${x.port.state}/${x.port.connection}`);
+    for (const p of this.lpOutputs()) L.push(`Launchpad « ${p.name} » protocole=${JSON.stringify(this.kindOf(p))} mode=${this.lp.mode}`);
+    const errs = Object.entries(this.portErrors || {}); if (errs.length) L.push('', 'Erreurs :', ...errs.map(([k, v]) => `${k} : ${v}`));
+    L.push('', 'Derniers messages reçus :', ...this.monitor.slice(0, 20));
+    return L.join('\n');
+  }
+  lpOutputs() { return this.outputs.filter((o) => o.role === 'launchpad' || o.role === 'launchpad-old').map((o) => o.port); }
+  kindOf(port) {
+    if (this.roleOf(port) === 'launchpad-old') return { dev: 0, legacy: true };
+    return this.lpKinds[port.name] || this.lpKinds[baseName(port.name)] || lpKind(port.name) || { dev: 0x0d, legacy: false };
+  }
+  // Ask unknown devices who they are (Universal Device Inquiry): a Launchpad is then recognised whatever
+  // name Windows gives its ports.
+  probeIdentity() {
+    for (const o of this.outputs) {
+      if (o.role !== 'keys' || this.probed.has(o.port.id)) continue;
+      this.probed.add(o.port.id);
+      try { o.port.send([0xf0, 0x7e, 0x7f, 0x06, 0x01, 0xf7]); } catch { /* no SysEx permission */ }
+    }
+  }
+  identity(port, data) {
+    // F0 7E <dev> 06 02 <manufacturer 00 20 29 = Novation> <family lsb> <family msb> ...
+    if (data.length < 10 || data[1] !== 0x7e || data[3] !== 0x06 || data[4] !== 0x02) return;
+    if (!(data[5] === 0x00 && data[6] === 0x20 && data[7] === 0x29)) return;
+    const fam = data[8];
+    const dev = { 0x13: 0x0d, 0x03: 0x0c, 0x23: 0x0e }[fam];
+    if (!dev) return; // not a Launchpad (Launchkey and others keep their name-based role)
+    const base = baseName(port.name);
+    const kind = { dev, legacy: false };
+    this.lpKinds[base] = kind;
+    let changed = false;
+    for (const x of [...this.inputs, ...this.outputs]) {
+      if (baseName(x.port.name) !== base || this.store.settings.portRoles[x.port.name]) continue;
+      const role = 'launchpad';
+      if (this.detected[x.port.name] !== role) { this.detected[x.port.name] = role; changed = true; }
+    }
+    if (changed) {
+      this.store.toast(`Launchpad reconnu : « ${port.name} »`);
+      for (const o of this.outputs) if (baseName(o.port.name) === base) this.probed.delete(o.port.id);
+      // re-scan so the new roles apply, and send the Programmer-mode message
+      const ids = new Set(this.lpOutputs().map((p) => p.id));
+      this.scan();
+      for (const p of this.lpOutputs()) if (!ids.has(p.id)) this.lp.hello(p, this.kindOf(p));
+    }
   }
   // Windows: a MIDI port used by another application (Ableton, an editor…) cannot be opened
   openPort(port) {
@@ -132,7 +183,7 @@ export class MidiManager {
     const parts = [];
     if (roles.has('midimix')) parts.push('MIDImix');
     if (roles.has('lk-keys') || roles.has('lk-daw')) parts.push('Launchkey');
-    if (roles.has('launchpad')) parts.push('Launchpad');
+    if (roles.has('launchpad') || roles.has('launchpad-old')) parts.push('Launchpad');
     const others = this.inputs.filter((i) => i.role === 'keys').length;
     if (others) parts.push(`+${others}`);
     const errs = Object.keys(this.portErrors || {}).length;
@@ -147,7 +198,7 @@ export class MidiManager {
     if (on) setTimeout(() => this.refreshLeds(true), 150);
   }
   shutdown() {
-    for (const p of this.out('launchpad')) this.lp.goodbye(p, lpKind(p.name) || { dev: 0x0d, legacy: false });
+    for (const p of this.lpOutputs()) this.lp.goodbye(p, this.kindOf(p));
     if (this.store.settings.lkDawMode) this.lkDawMode(false);
     for (let i = 0; i < 27; i++) this.sendTo('midimix', [0x90, i, 0]);
   }
@@ -155,7 +206,8 @@ export class MidiManager {
   // ------------------------------------------------------------------ incoming
   onMessage(port, role, data) {
     const st = data[0] & 0xf0, ch = data[0] & 0x0f, d1 = data[1], d2 = data[2];
-    if (st === 0xf0 || data[0] >= 0xf8) return; // sysex / realtime
+    if (data[0] === 0xf0) { this.identity(port, data); return; }
+    if (data[0] >= 0xf8) return; // realtime
     const type = st === 0x90 && d2 > 0 ? 'on' : st === 0x80 || (st === 0x90 && d2 === 0) ? 'off' : st === 0xb0 ? 'cc' : st === 0xe0 ? 'pb' : st === 0xd0 ? 'at' : 'other';
     if (this.onActivity) this.onActivity(role);
     this.monitor.unshift(`${port.name.slice(0, 22)} · ${type.toUpperCase()} ch${ch + 1} ${d1 ?? ''} ${d2 ?? ''}`);
@@ -176,7 +228,7 @@ export class MidiManager {
     }
     if (role === 'ignore') return;
     if (role === 'midimix') return this.midimix(type, ch, d1, d2);
-    if (role === 'launchpad') { const k = lpKind(port.name) || { legacy: false }; return this.lp.handle(this.lp.decode(type, ch, d1, d2, k.legacy)); }
+    if (role === 'launchpad' || role === 'launchpad-old') { const k = this.kindOf(port); return this.lp.handle(this.lp.decode(type, ch, d1, d2, k.legacy)); }
     if (role === 'lk-daw') return this.launchkey(type, ch, d1, d2, true);
     if (role === 'lk-keys') return this.launchkey(type, ch, d1, d2, false);
     return this.keyboard(type, ch, d1, d2);
@@ -359,7 +411,7 @@ export class MidiManager {
     }
     // Launchkey pads
     // Launchpad
-    for (const p of this.out('launchpad')) this.lp.paint(p, lpKind(p.name) || { dev: 0x0d, legacy: false });
+    for (const p of this.lpOutputs()) this.lp.paint(p, this.kindOf(p));
     if (!this.out('lk-daw').length || !s.settings.lkDawMode) return;
     const mode = s.settings.lkPadMode;
     const pos = s.pos;
@@ -407,4 +459,9 @@ export class MidiManager {
       set(i, col, anim);
     }
   }
+}
+
+// "MIDIIN2 (LPMiniMK3 MIDI)" / "LPMiniMK3 MIDI" -> "lpminimk3"
+export function baseName(name) {
+  return (name || '').toLowerCase().replace(/^midi(in|out)\d*\s*\((.*)\)$/, '$2').replace(/\b(midi|in|out|port|daw)\b/g, '').replace(/[^a-z0-9]/g, '');
 }

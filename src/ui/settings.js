@@ -149,7 +149,12 @@ export class SettingsPage {
         h('span', { class: err ? 'port-state err' : 'port-state' }, err ? ' — ERREUR : ' + err : port.connection === 'open' ? ' — ouvert' : ' — ' + port.connection)),
         selectField('', Object.entries(ROLES), role, (v) => { st.portRoles[port.name] = v; this.save(); m.scan(); })));
     }
-    el.append(button('Rescanner', () => m.scan(), 'small'));
+    el.append(h('div', { class: 'row' }, button('Rescanner', () => m.scan(), 'small'),
+      button('Copier le diagnostic MIDI', async () => {
+        const txt = m.diagnostic();
+        try { await navigator.clipboard.writeText(txt); this.store.toast('Diagnostic copié : collez-le dans la conversation'); }
+        catch { this.mon.textContent = txt; this.store.toast('Diagnostic affiché dans le moniteur MIDI (sélectionnez et copiez)'); }
+      }, 'small primary')));
     if (this.mon) this.mon.textContent = m.monitor.join('\n');
   }
   toggleLearn() {
